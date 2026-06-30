@@ -1,4 +1,4 @@
-package payment
+package shipping
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"time"
 
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
-	"github.com/joanaeliseal/microservices-proto/golang/payment"
+	"github.com/joanaeliseal/microservices-proto/golang/shipping"
 	"github.com/joanaeliseal/microservices/order/internal/application/core/domain"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -15,13 +15,13 @@ import (
 )
 
 type Adapter struct {
-	payment payment.PaymentClient
+	shipping shipping.ShippingClient
 }
 
-func NewAdapter(paymentServiceUrl string) (*Adapter, error) {
+func NewAdapter(shippingServiceUrl string) (*Adapter, error) {
 	var opts []grpc.DialOption
 
-	// Interceptor de retry com backoff linear
+	// Interceptor de retry com backoff linear (mesmo padrão do Payment)
 	opts = append(opts,
 		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(
 			grpc_retry.WithCodes(codes.Unavailable, codes.ResourceExhausted),
@@ -32,32 +32,39 @@ func NewAdapter(paymentServiceUrl string) (*Adapter, error) {
 
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
-	conn, err := grpc.NewClient(paymentServiceUrl, opts...)
+	conn, err := grpc.NewClient(shippingServiceUrl, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	client := payment.NewPaymentClient(conn)
-	return &Adapter{payment: client}, nil
+	client := shipping.NewShippingClient(conn)
+	return &Adapter{shipping: client}, nil
 }
 
-func (a *Adapter) Charge(order *domain.Order) error {
+func (a *Adapter) Ship(order *domain.Order) (int32, error) {
 	// Deadline individual de 2 segundos para esta chamada
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_, err := a.payment.CreatePayment(ctx, &payment.CreatePaymentRequest{
-		UserId:     order.CustomerID,
+	var items []*shipping.OrderItem
+	for _, item := range order.OrderItems {
+		items = append(items, &shipping.OrderItem{
+			ProductCode: item.ProductCode,
+			Quantity:    item.Quantity,
+		})
+	}
+
+	resp, err := a.shipping.Ship(ctx, &shipping.ShipOrderRequest{
 		OrderId:    order.ID,
-		TotalPrice: order.TotalPrice(),
+		OrderItems: items,
 	})
 
 	if err != nil {
 		if status.Code(err) == codes.DeadlineExceeded {
-			log.Printf("[Payment] Timeout excedido para pedido %d: %v", order.ID, err)
+			log.Printf("[Shipping] Timeout excedido para pedido %d: %v", order.ID, err)
 		}
-		return err
+		return 0, err
 	}
 
-	return nil
+	return resp.EstimatedDays, nil
 }

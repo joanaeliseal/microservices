@@ -2,6 +2,6 @@ package ports
 
 import "github.com/joanaeliseal/microservices/order/internal/application/core/domain"
 
-type PaymentPort interface {
-	Charge(order *domain.Order) error
+type ShippingPort interface {
+	Ship(order *domain.Order) (int32, error) // retorna dias estimados
 }

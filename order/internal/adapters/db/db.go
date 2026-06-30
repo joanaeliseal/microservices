@@ -3,7 +3,10 @@ package db
 import (
 	"fmt"
 
-    "github.com/joanaeliseal/microservices/order/internal/application/core/domain"
+	"github.com/joanaeliseal/microservices/order/internal/application/core/domain"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+)
 
 type Order struct {
 	gorm.Model
@@ -20,6 +23,13 @@ type OrderItem struct {
 	OrderID     uint
 }
 
+type StockItem struct {
+	gorm.Model
+	ProductCode string `gorm:"uniqueIndex"`
+	Name        string
+	Quantity    int32
+}
+
 type Adapter struct {
 	db *gorm.DB
 }
@@ -30,7 +40,7 @@ func NewAdapter(dataSourceURL string) (*Adapter, error) {
 		return nil, fmt.Errorf("db connection error: %v", openErr)
 	}
 
-	err := db.AutoMigrate(&Order{}, &OrderItem{})
+	err := db.AutoMigrate(&Order{}, &OrderItem{}, &StockItem{})
 	if err != nil {
 		return nil, fmt.Errorf("db migration error: %v", err)
 	}
@@ -84,4 +94,27 @@ func (a Adapter) Save(order *domain.Order) error {
 	}
 
 	return res.Error
+}
+
+// ProductsExist verifica se os produtos existem no estoque
+func (a Adapter) ProductsExist(productCodes []string) (bool, []string, error) {
+	var found []StockItem
+	result := a.db.Where("product_code IN ?", productCodes).Find(&found)
+	if result.Error != nil {
+		return false, nil, result.Error
+	}
+
+	foundCodes := make(map[string]bool)
+	for _, item := range found {
+		foundCodes[item.ProductCode] = true
+	}
+
+	var missing []string
+	for _, code := range productCodes {
+		if !foundCodes[code] {
+			missing = append(missing, code)
+		}
+	}
+
+	return len(missing) == 0, missing, nil
 }
