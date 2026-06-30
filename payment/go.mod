@@ -1,6 +1,6 @@
 module github.com/huseyinbabal/microservices/payment
 
-go 1.26.1
+go 1.21
 
 require github.com/ruandg/microservices-proto/golang/payment v0.0.0-00010101000000-000000000000
 
