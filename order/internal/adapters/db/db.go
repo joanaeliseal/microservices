@@ -25,7 +25,7 @@ type OrderItem struct {
 
 type StockItem struct {
 	gorm.Model
-	ProductCode string `gorm:"uniqueIndex"`
+	ProductCode string `gorm:"size:100;uniqueIndex"`
 	Name        string
 	Quantity    int32
 }
